@@ -4,56 +4,57 @@ import openpyxl
 from selenium import webdriver
 from bs4 import BeautifulSoup
 import csv
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 
-#driver = webdriver.Chrome('C:/Users/Leonid/Downloads/chromedriver_win32/chromedriver.exe')
 driver = webdriver.PhantomJS()
-#driver = webdriver.PhantomJS('C:/Users/Leonid/Downloads/phantomjs-2.1.1-windows/phantomjs-2.1.1-windows/bin/phantomjs.exe')
 driver.set_window_size(1120, 550)
-url = 'http://ati.su/Tables/Default.aspx?EntityType=Truck&FromGeoList=255ccce5-4b8b-e611-a612-002590e45781_0&ToGeoList=255ccce5-4b8b-e611-a612-002590e45781_0&FromGeoRadius=-1&ToGeoRadius=-1&qdsv=-1'
-#url = 'http://ati.su/Tables/Default.aspx?EntityType=Truck&FromGeo=2_71&ToGeo=2_71&FromGeoRadius=-1&ToGeoRadius=-1&qdsv=-1'
-#finals = []
+
+# по какому направлению ищем
+url = 'http://ati.su/Tables/Default.aspx?EntityType=Truck&FromGeo=2_71&ToGeo=2_71&FromGeoRadius=-1&ToGeoRadius=-1&qdsv=-1'
 
 
 def parse (html, projects):
     soup = BeautifulSoup(html, "html.parser")
-    #print(soup)
     #вычленяем таблицу, содержащую необходимую информацию
     table_body = soup.find('table', class_='atiTables')
     table = table_body.tbody
 
-    rec1 = 0  # кол-во рекомендаций
-    pret1 = 0 # кол-во претензий
-    np1 = 0   # кол-во недобросовестных партнеров
-    tel = None # телефон
-    weight = 0
-    firm = None
-    base_cty = None
-    car_type_1 = None
-    ld_city = None
-    ud_city = None
-    ball = None
+    rec1 = 0                        # кол-во рекомендаций
+    pret1 = 0                       # кол-во претензий
+    np1 = 0                         # кол-во недобросовестных партнеров
+    tel = None                      # телефон
+    weight = 0                      # грузоподъёмность
+    firm = None                     # наименование организации
+    base_cty = None                 # город базирования
+    car_type_1 = None               # тип кузова
+    ld_city = None                  # пункт загрузки
+    ud_city = None                  # пункт выгрузки
+    ball = None                     # рейтинг
 
-    #projects = []
-
+    
     for row in table.select('tr[class]'):
         #print(row)
         col = row.find_all('td')
-        firm = row.find('span', id = 'ShortenedLbl')
+        
+        # наименование организации
+        firm = row.find('span', id = 'ShortenedLbl')    
         #print(firm)
+        
+        # город базирования
         base_cty = row.find('td', style = 'white-space: nowrap; padding-left: 5px;')
 
+        # тип кузова
         car_types = col[2].find('div', class_='gridCell')
         #print(car_types)
         if car_types:
             car_type_1 = car_types.find('span').text
             #print(car_type_1)
 
+        # пункт загрузки    
         car_input = col[3].find('div', id = 'divCity')
         if car_input:
             ld_city = (car_input.b.text)
 
+        # пункт выгрузки (в его качестве могут быть указаны город, регион или страна)
         car_cty_output = col[4].find('div', style="white-space: nowrap")
         car_reg_output = col[4].find('div', style="white-space: nowrap;")
         car_country_output = col[4].find('span', style="white-space: nowrap")
@@ -66,17 +67,20 @@ def parse (html, projects):
             ud_city = (car_reg_output.b.text.strip())
         elif car_country_output:
             #print('3')
-            ud_city = ('Россия')
+            ud_city = (car_country_output.b.text.strip())
 
+        # телефон        
         tel = row.find_all('a', class_='PhoneNumberRef')
 
+        # рейтинг
         rate = row.find('span', class_='forumtopictitle')
         if rate:
             ball = rate['ratedescription'][20:24]
             ball = float(ball.replace(",", "."))
         else:
             ball = 0
-
+    
+        # кол-во рекомендаций
         rec = row.find('span', style="color: #00AA00;")
         #print(rec)
         if rec:
@@ -84,26 +88,27 @@ def parse (html, projects):
         else:
             rec1 = 0
 
+        # кол-во претензий
         pret = row.find('span', style="color: #FF0000;")
         if pret:
             pret1 = int(pret.text[1:])
         else:
             pret1 = 0
 
+        # кол-во недобросовестных партнеров
         np = row.find('span', style="color: #666666;")
         if np:
             np1 = int(np.text[2:])
         else:
             np1 = 0
 
+        # грузоподъеность    
         weight_tmp = col[2].find('div', class_='gridCell')
         if weight_tmp:
             weight = (float(weight_tmp.div.span.next_sibling[12:15].replace('/','').replace(',', '.').strip()))
             #print(weight)
 
-        #if firm:
-        if ball >= 1.0 and rec1 >= 3 and np1 <= 2 and weight >= 1.5:
-            #print(weight)
+        if firm:
             projects.append({
                 'name': firm.text,
                 'base': base_cty.text,
@@ -117,13 +122,13 @@ def parse (html, projects):
                 'unscrupulous partners': np1,
                 'capacity': weight
         })
-        #finals += projects
+
+        # обнуляем 
         rec1 = 0
         pret1 = 0
         np1 = 0
-
-    #for project in projects:
-    #    print(project)
+    
+    # переход на следующую страницу
     bool_next_page = soup.find(title = 'Перейти на следующую страницу')
     if bool_next_page:
         url_next_page ='http://ati.su' + bool_next_page.get('href')
@@ -133,7 +138,7 @@ def parse (html, projects):
         parse(driver.page_source, projects)
         time.sleep(1)
 
-
+# сохранение
 def save(projects, path):
 
     with open(path, 'w', newline='') as csvfile:
@@ -143,11 +148,10 @@ def save(projects, path):
             writer.writerow((project['name'], project['base'], project['type'], project['capacity'], project['load_city'], project['unload_city'], ', '.join(project['phone_numbers']), project['stars'], project['recommends'], project['claims'], project['unscrupulous partners']))
 
 def main():
-    my_login = "WeberGreen"
-    my_password = "Onyxia187"
+    my_login = ""
+    my_password = ""
     projects = []
 
-    #driver = webdriver.Chrome()
     print('Accessing main site...')
     driver.get('http://ati.su/login/login.aspx')
     print('Logging in...')
